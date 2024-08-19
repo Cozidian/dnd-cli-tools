@@ -22,8 +22,10 @@ type model struct {
 	table         table.Model
 	counter       int
 	input         textinput.Model
-	conditionList huh.MultiSelect[string]
+	conditionList *huh.MultiSelect[string]
 	conditionMode bool
+	conditions    []string
+	form          *huh.Form
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -36,17 +38,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.conditionMode {
 			switch msg.String() {
-			case "up", "k":
-				m.conditionList.SelectPrev()
-			case "down", "j":
-				m.conditionList.SelectNext()
+			case "up", "down", "tab", "shift+tab":
+				// Ensure that navigation keys are handled correctly
+				m.form.Update(msg)
 			case "enter":
-				m.conditionList.ToggleSelected()
+				m.form.State = huh.StateCompleted
+				// Handle form completion
+				m.conditionMode = false
 			case "esc":
+				// Exit condition mode without completing the form
 				m.conditionMode = false
-			case "q":
-				m.applyConditions()
-				m.conditionMode = false
+			default:
+				m.form.Update(msg)
 			}
 		} else if m.input.Focused() {
 			switch msg.String() {
@@ -89,6 +92,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "c":
 				m.conditionMode = !m.conditionMode
+				m.form.Init()
+				m.form.State = huh.StateNormal
 			}
 		}
 	}
@@ -122,6 +127,10 @@ func (m model) View() string {
 	var inputView string
 	if m.input.Focused() {
 		inputView = "\n" + m.input.View()
+	}
+	if m.conditionMode {
+		formView := m.form.View()
+		return formView
 	}
 
 	return tableView + counterView + inputView
@@ -161,6 +170,8 @@ func main() {
 		tableRows[i] = table.Row(row)
 	}
 
+	var m model
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(tableRows),
@@ -190,16 +201,32 @@ func main() {
 		Title("Conditions").
 		Description("Something").
 		Options(
-			huh.NewOption("Blinded", "Blinded")).
+			huh.NewOption("Blinded", "Blinded"),
+			huh.NewOption("Charmed", "Charmed"),
+			huh.NewOption("Deafened", "Deafened"),
+			huh.NewOption("Frightened", "Frightened"),
+			huh.NewOption("Grappled", "Grappled"),
+			huh.NewOption("Incapacitated", "Incapacitated"),
+			huh.NewOption("Invisible", "Invisible"),
+			huh.NewOption("Paralyzed", "Paralyzed"),
+			huh.NewOption("Petrified", "Petrified"),
+			huh.NewOption("Poisoned", "Poisoned"),
+			huh.NewOption("Prone", "Prone"),
+			huh.NewOption("Restrained", "Restrained"),
+			huh.NewOption("Stunned", "Stunned"),
+			huh.NewOption("Unconscious", "Unconscious")).
+		Value(&m.conditions).
 		Filterable(true)
 
-	m := model{
-		t,
-		0,
-		ta,
-		*mu,
-		false,
-	}
+	f := huh.NewForm(huh.NewGroup(mu))
+
+	m.table = t
+	m.counter = 0
+	m.input = ta
+	m.conditionList = mu
+	m.conditionMode = false
+	m.conditions = []string{}
+	m.form = f
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
