@@ -6,11 +6,11 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -19,13 +19,10 @@ var baseStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("240"))
 
 type model struct {
-	table         table.Model
-	counter       int
-	input         textinput.Model
-	conditionList *huh.MultiSelect[string]
-	conditionMode bool
-	conditions    []string
-	form          *huh.Form
+	table      table.Model
+	counter    int
+	input      textinput.Model
+	conditions []string
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -36,25 +33,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.conditionMode {
-			switch msg.String() {
-			case "up", "down", "tab", "shift+tab":
-				// Ensure that navigation keys are handled correctly
-				m.form.Update(msg)
-			case "enter":
-				m.form.State = huh.StateCompleted
-				// Handle form completion
-				m.conditionMode = false
-			case "esc":
-				// Exit condition mode without completing the form
-				m.conditionMode = false
-			default:
-				m.form.Update(msg)
-			}
-		} else if m.input.Focused() {
+		if m.input.Focused() {
 			switch msg.String() {
 			case "enter":
-				m.applyHealingOrDamage()
+				m.handleInput()
 				m.input.Blur()
 				m.input.SetValue("")
 			case "esc":
@@ -90,10 +72,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.input.Focused() {
 					m.input.Focus()
 				}
-			case "c":
-				m.conditionMode = !m.conditionMode
-				m.form.Init()
-				m.form.State = huh.StateNormal
 			}
 		}
 	}
@@ -102,17 +80,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *model) applyHealingOrDamage() {
-	value, err := strconv.Atoi(m.input.Value())
-	if err != nil {
+func (m *model) handleInput() {
+	if len(m.input.Value()) == 0 {
 		return
 	}
+	healOrDamage, condition := strconv.Atoi(m.input.Value())
+	if condition != nil {
+		m.applyCondition(m.input.Value())
+	}
+	m.applyHealingOrDamage(healOrDamage)
+}
 
+func (m *model) applyCondition(condition string) {
+	selectedIndex := m.table.Cursor()
+	currentRow := m.table.Rows()[selectedIndex]
+
+	if strings.Contains(currentRow[4], condition) {
+		currentRow[4] = strings.Replace(currentRow[4], condition, "", -1)
+		m.table.SetRows(m.table.Rows())
+	} else {
+
+		currentRow[4] = currentRow[4] + " " + condition
+		m.table.SetRows(m.table.Rows())
+	}
+}
+
+func RemveAtIndex(s []table.Row, index int) []table.Row {
+	return append(s[:index], s[index+1:]...)
+}
+
+func (m *model) applyHealingOrDamage(healOrDamage int) {
 	selectedIndex := m.table.Cursor()
 	currentRow := m.table.Rows()[selectedIndex]
 
 	currentHP, _ := strconv.Atoi(currentRow[3])
-	newHP := currentHP + value
+	newHP := currentHP + healOrDamage
+
+	if newHP <= 0 && currentRow[5] != "y" {
+		m.table.SetRows(RemveAtIndex(m.table.Rows(), selectedIndex))
+	}
 
 	// Update the row with the new HP
 	currentRow[3] = strconv.Itoa(newHP)
@@ -128,10 +134,6 @@ func (m model) View() string {
 	if m.input.Focused() {
 		inputView = "\n" + m.input.View()
 	}
-	if m.conditionMode {
-		formView := m.form.View()
-		return formView
-	}
 
 	return tableView + counterView + inputView
 }
@@ -142,6 +144,8 @@ func main() {
 		{Title: "Name", Width: 10},
 		{Title: "AC", Width: 4},
 		{Title: "HP", Width: 4},
+		{Title: "Conditions", Width: 20},
+		{Title: "Player", Width: 4},
 	}
 
 	file, err := os.Open("data.csv")
@@ -197,36 +201,10 @@ func main() {
 	ta.CharLimit = 6
 	ta.Width = 60
 
-	mu := huh.NewMultiSelect[string]().
-		Title("Conditions").
-		Description("Something").
-		Options(
-			huh.NewOption("Blinded", "Blinded"),
-			huh.NewOption("Charmed", "Charmed"),
-			huh.NewOption("Deafened", "Deafened"),
-			huh.NewOption("Frightened", "Frightened"),
-			huh.NewOption("Grappled", "Grappled"),
-			huh.NewOption("Incapacitated", "Incapacitated"),
-			huh.NewOption("Invisible", "Invisible"),
-			huh.NewOption("Paralyzed", "Paralyzed"),
-			huh.NewOption("Petrified", "Petrified"),
-			huh.NewOption("Poisoned", "Poisoned"),
-			huh.NewOption("Prone", "Prone"),
-			huh.NewOption("Restrained", "Restrained"),
-			huh.NewOption("Stunned", "Stunned"),
-			huh.NewOption("Unconscious", "Unconscious")).
-		Value(&m.conditions).
-		Filterable(true)
-
-	f := huh.NewForm(huh.NewGroup(mu))
-
 	m.table = t
 	m.counter = 0
 	m.input = ta
-	m.conditionList = mu
-	m.conditionMode = false
 	m.conditions = []string{}
-	m.form = f
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
