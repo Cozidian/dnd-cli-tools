@@ -34,7 +34,7 @@ func printChar(char Character) {
 		fmt.Fprintf(&sb, "%s\n\n", title.Render("Character Sheet"))
 		fmt.Fprintf(&sb, "Name: %s\n", keyword.Render(char.Name))
 		fmt.Fprintf(&sb, "Race: %s\n", keyword.Render(char.Race))
-		fmt.Fprintf(&sb, "Class: %s\n", keyword.Render(char.Class))
+		fmt.Fprintf(&sb, "Class: %s\n", keyword.Render(string(char.Class.ClassType)))
 		fmt.Fprintf(&sb, "Background: %s\n", keyword.Render(char.Background))
 
 		// Build ability scores

@@ -15,8 +15,9 @@ func initialModel() model {
 		newCharacter: Character{},
 		selectedChar: 0,
 		formComplete: false,
+		builderStep:  1,
 	}
-	m.form = createCharacterForm(&m.newCharacter)
+	m.form = createInitialForm(&m.newCharacter)
 	return m
 }
 
@@ -39,33 +40,67 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = "builder"
 					m.formComplete = false
 					m.newCharacter = Character{} // Reset new character
-					m.form = createCharacterForm(&m.newCharacter)
+					m.form = createInitialForm(&m.newCharacter)
 					return m, m.form.Init()
 				} else {
 					m.state = "sheet"
 				}
 			case "builder":
 				if m.formComplete {
-					m.newCharacter.Name = m.form.GetString("name")
-					m.newCharacter.Race = m.form.GetString("race")
-					m.newCharacter.Class = m.form.GetString("class")
-					m.newCharacter.Background = m.form.GetString("background")
-					m.newCharacter.AbilityScore.Strength = m.form.GetInt("strength")
-					m.newCharacter.AbilityScore.Dexterity = m.form.GetInt("dexterity")
-					m.newCharacter.AbilityScore.Constitution = m.form.GetInt("constitution")
-					m.newCharacter.AbilityScore.Intelligence = m.form.GetInt("intelligence")
-					m.newCharacter.AbilityScore.Wisdom = m.form.GetInt("wisdom")
-					m.newCharacter.AbilityScore.Charisma = m.form.GetInt("charisma")
-					m.characters = append(m.characters, m.newCharacter)
-					m.selectedChar = len(m.characters) - 1
-					m.state = "sheet"
+					if m.builderStep == 1 {
+						m.newCharacter.Name = m.form.GetString("name")
+						classValue := m.form.Get("class")
+						classes := classValue.(Classes)
+						m.newCharacter.Class.ClassType = classes
+						m.builderStep = 2
+						m.formComplete = false
+						m.form = createClassSpecificForm(&m.newCharacter)
+						m.form.State = huh.StateNormal
+						return m, m.form.Init()
+						// m.newCharacter.Race = m.form.GetString("race")
+						// m.newCharacter.Background = m.form.GetString("background")
+						// m.newCharacter.AbilityScore.Strength = m.form.GetInt("strength")
+						// m.newCharacter.AbilityScore.Dexterity = m.form.GetInt("dexterity")
+						// m.newCharacter.AbilityScore.Constitution = m.form.GetInt("constitution")
+						// m.newCharacter.AbilityScore.Intelligence = m.form.GetInt("intelligence")
+						// m.newCharacter.AbilityScore.Wisdom = m.form.GetInt("wisdom")
+						// m.newCharacter.AbilityScore.Charisma = m.form.GetInt("charisma")
+					} else if m.builderStep == 2 {
+						switch m.newCharacter.Class.ClassType {
+						case Barbarian:
+							skillValues := m.form.Get("skillProficiencies")
+							skills := skillValues.([]string)
+							m.newCharacter.Class.SkillProficiencies = skills
+							weaponMasteriesValues := m.form.Get("weaponMasteries")
+							weaponMasteries := weaponMasteriesValues.([]string)
+							m.newCharacter.Class.WeaponMasteries = weaponMasteries
+						case Bard:
+							skillValues := m.form.Get("skillProficiencies")
+							skills := skillValues.([]string)
+							m.newCharacter.Class.SkillProficiencies = skills
+							instrumentValues := m.form.Get("instruments")
+							instruments := instrumentValues.([]string)
+							m.newCharacter.Class.Instruments = instruments
+						}
+						m.characters = append(m.characters, m.newCharacter)
+						m.selectedChar = len(m.characters) - 1
+						m.state = "sheet"
+						m.builderStep = 1
+					}
 				}
 			case "sheet":
 				m.state = "list"
 			}
 		case "esc":
 			if m.state == "builder" {
-				m.state = "list"
+				if m.builderStep == 1 {
+					m.state = "list"
+				} else if m.builderStep == 2 {
+					m.builderStep = 1
+					m.formComplete = false
+					m.form = createInitialForm(&m.newCharacter)
+					return m, m.form.Init()
+				}
 				return m, nil
 			}
 		case "up", "down":
